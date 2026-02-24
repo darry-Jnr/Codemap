@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { db } from "@/lib/firebase"
 import { doc, onSnapshot, updateDoc, GeoPoint } from "firebase/firestore"
+import "maplibre-gl/dist/maplibre-gl.css"
 
 interface MapViewProps {
   sessionId: string
@@ -15,13 +16,11 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
   const mapRef = useRef<any>(null)
   const myMarkerRef = useRef<any>(null)
   const friendMarkerRef = useRef<any>(null)
-  const lineRef = useRef<any>(null)
   const [bearing, setBearing] = useState<number>(0)
   const [distance, setDistance] = useState<string>("--")
   const myLocationRef = useRef<{ lat: number; lng: number } | null>(null)
   const friendLocationRef = useRef<{ lat: number; lng: number } | null>(null)
 
-  // Calculate distance in meters between two coords
   const getDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
     const R = 6371000
     const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -36,7 +35,6 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
     return R * c
   }
 
-  // Calculate bearing (direction) between two coords
   const getBearing = (lat1: number, lng1: number, lat2: number, lng2: number) => {
     const dLng = ((lng2 - lng1) * Math.PI) / 180
     const y = Math.sin(dLng) * Math.cos((lat2 * Math.PI) / 180)
@@ -45,29 +43,22 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
       Math.sin((lat1 * Math.PI) / 180) *
         Math.cos((lat2 * Math.PI) / 180) *
         Math.cos(dLng)
-    const bearing = (Math.atan2(y, x) * 180) / Math.PI
-    return (bearing + 360) % 360
+    const b = (Math.atan2(y, x) * 180) / Math.PI
+    return (b + 360) % 360
   }
 
   const updateArrow = () => {
     if (!myLocationRef.current || !friendLocationRef.current) return
     const { lat: myLat, lng: myLng } = myLocationRef.current
     const { lat: fLat, lng: fLng } = friendLocationRef.current
-
     const dist = getDistance(myLat, myLng, fLat, fLng)
     const bear = getBearing(myLat, myLng, fLat, fLng)
-
     setBearing(bear)
-    if (dist < 1000) {
-      setDistance(`${Math.round(dist)}m`)
-    } else {
-      setDistance(`${(dist / 1000).toFixed(1)}km`)
-    }
+    setDistance(dist < 1000 ? `${Math.round(dist)}m` : `${(dist / 1000).toFixed(1)}km`)
   }
 
   const updateLine = (map: any) => {
     if (!myLocationRef.current || !friendLocationRef.current) return
-
     const geojson = {
       type: "Feature",
       geometry: {
@@ -78,7 +69,6 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
         ],
       },
     }
-
     if (map.getSource("line-source")) {
       map.getSource("line-source").setData(geojson)
     }
@@ -86,11 +76,10 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
 
   // Initialize map
   useEffect(() => {
-    if (!mapContainer.current) return
+    if (!mapContainer.current || mapRef.current) return
 
     const initMap = async () => {
       const maplibregl = (await import("maplibre-gl")).default
-      await import("maplibre-gl/dist/maplibre-gl.css")
 
       const map = new maplibregl.Map({
         container: mapContainer.current!,
@@ -103,7 +92,7 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
       mapRef.current = map
 
       map.on("load", () => {
-        // Add line source
+        // Add line source and layer
         map.addSource("line-source", {
           type: "geojson",
           data: {
@@ -112,6 +101,7 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
               type: "LineString",
               coordinates: [],
             },
+            properties: {},
           },
         })
 
@@ -155,7 +145,10 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
     initMap()
 
     return () => {
-      if (mapRef.current) mapRef.current.remove()
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
     }
   }, [])
 
@@ -168,13 +161,11 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
         const { latitude, longitude } = pos.coords
         myLocationRef.current = { lat: latitude, lng: longitude }
 
-        // Update my location in Firestore
         const locationField = isOwner ? "ownerLocation" : "finderLocation"
         await updateDoc(doc(db, "sessions", sessionId), {
           [locationField]: new GeoPoint(latitude, longitude),
         })
 
-        // Move my marker
         if (myMarkerRef.current && mapRef.current) {
           myMarkerRef.current.setLngLat([longitude, latitude]).addTo(mapRef.current)
           mapRef.current.easeTo({ center: [longitude, latitude] })
@@ -203,10 +194,8 @@ export default function MapView({ sessionId, isOwner, friendName }: MapViewProps
 
       const lat = friendLocation.latitude
       const lng = friendLocation.longitude
-
       friendLocationRef.current = { lat, lng }
 
-      // Move friend marker
       if (friendMarkerRef.current && mapRef.current) {
         friendMarkerRef.current.setLngLat([lng, lat]).addTo(mapRef.current)
       }
