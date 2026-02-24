@@ -4,7 +4,7 @@ import dynamic from "next/dynamic"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { useState, Suspense } from "react"
-import "leaflet/dist/leaflet.css"
+
 const MapView = dynamic(() => import("../components/MapView"), {
   ssr: false,
   loading: () => (
