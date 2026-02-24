@@ -3,34 +3,17 @@
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { db } from "@/lib/firebase"
-import { doc, setDoc, getDoc } from "firebase/firestore"
+import { doc, runTransaction } from "firebase/firestore"
 
 export default function LandingPage() {
   const router = useRouter()
   const [name, setName] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [dots, setDots] = useState("")
 
-  // Animate the three dots
-  useEffect(() => {
-    if (!loading) return
-    const interval = setInterval(() => {
-      setDots((prev) => (prev.length >= 3 ? "" : prev + "."))
-    }, 400)
-    return () => clearInterval(interval)
-  }, [loading])
-
-  // If already has a name saved, skip landing
   useEffect(() => {
     const saved = localStorage.getItem("codemap_username")
-    if (saved) {
-      router.push("/home")
-      return
-    }
-    // Pre-warm Firestore connection while user is typing their name
-    const warmUp = doc(db, "users", "warmup")
-    getDoc(warmUp).catch(() => {}) // fire and forget, we dont care about result
+    if (saved) router.push("/home")
   }, [router])
 
   const handleSubmit = async () => {
@@ -46,29 +29,30 @@ export default function LandingPage() {
       const username = name.trim().toLowerCase()
       const userRef = doc(db, "users", username)
 
-      // Direct lookup — instant, no scanning
-      const existing = await getDoc(userRef)
+      const taken = await runTransaction(db, async (transaction) => {
+        const existing = await transaction.get(userRef)
+        if (existing.exists()) return true
 
-      if (existing.exists()) {
+        transaction.set(userRef, {
+          username,
+          displayName: name.trim(),
+          createdAt: new Date(),
+        })
+        return false
+      })
+
+      if (taken) {
         setError("That name is already taken — try another")
-        setLoading(false)
         return
       }
 
-      await setDoc(userRef, {
-        username,
-        displayName: name.trim(),
-        createdAt: new Date(),
-      })
-
       localStorage.setItem("codemap_user_id", username)
       localStorage.setItem("codemap_username", name.trim())
-
       router.push("/home")
 
     } catch (err) {
-      setError("Something went wrong — try again")
       console.error(err)
+      setError("Something went wrong — try again")
     } finally {
       setLoading(false)
     }
@@ -77,7 +61,6 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-white">
 
-      {/* Logo */}
       <div className="w-16 h-16 bg-[#6366F1] rounded-2xl flex items-center justify-center mb-6">
         <span className="text-white text-2xl font-bold">C</span>
       </div>
