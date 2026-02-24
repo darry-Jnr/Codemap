@@ -26,34 +26,30 @@ function MapContent() {
   const role = searchParams.get("role")
   const isOwner = role === "owner"
   const [showConfirm, setShowConfirm] = useState(false)
-  const [friendName, setFriendName] = useState<string | null>(null)
+  const [friendName, setFriendName] = useState<string>("")
   const [timeLeft, setTimeLeft] = useState<string>("--:--")
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [showStoppedModal, setShowStoppedModal] = useState(false)
   const expiresAtRef = useRef<Date | null>(null)
 
-  // Countdown timer — runs every second independently
+  // Countdown timer
   useEffect(() => {
     const interval = setInterval(() => {
       if (!expiresAtRef.current) return
-
       const diff = expiresAtRef.current.getTime() - Date.now()
       if (diff <= 0) {
         setTimeLeft("0:00")
-        clearInterval(interval)
         router.push("/home")
         return
       }
-
       const minutes = Math.floor(diff / 60000)
       const seconds = Math.floor((diff % 60000) / 1000)
       setTimeLeft(`${minutes}:${seconds.toString().padStart(2, "0")}`)
     }, 1000)
-
     return () => clearInterval(interval)
   }, [router])
 
-  // Firestore listener — watches for status changes
+  // Firestore listener
   useEffect(() => {
     const id = localStorage.getItem("codemap_session_id")
     if (!id) {
@@ -68,15 +64,12 @@ function MapContent() {
 
       setFriendName(isOwner ? data.finderName : data.ownerName)
 
-      // Store expiry for the countdown timer
       if (data.expiresAt) {
         expiresAtRef.current = data.expiresAt.toDate()
       }
 
-      // Session was cancelled by owner
       if (data.status === "cancelled") {
         if (!isOwner) {
-          // Finder sees the stopped modal
           setShowStoppedModal(true)
         } else {
           router.push("/home")
@@ -113,7 +106,13 @@ function MapContent() {
 
       {/* Full screen map */}
       <div className="absolute inset-0 w-full h-full">
-        <MapView />
+        {sessionId && (
+          <MapView
+            sessionId={sessionId}
+            isOwner={isOwner}
+            friendName={friendName}
+          />
+        )}
       </div>
 
       {/* Back arrow */}
@@ -126,12 +125,11 @@ function MapContent() {
 
       {/* Floating bottom card */}
       <div className="absolute bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-xl px-6 py-5 flex flex-col gap-4">
-
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-400">Connected with</p>
             <p className="text-lg font-bold text-gray-900">
-              {friendName ?? "..."}
+              {friendName || "..."}
             </p>
           </div>
           <div className="text-right">
@@ -156,10 +154,9 @@ function MapContent() {
             Leave Session
           </button>
         )}
-
       </div>
 
-      {/* Stop sharing confirmation — owner only */}
+      {/* Stop sharing confirmation */}
       {showConfirm && (
         <div className="absolute inset-0 z-[100] bg-black/50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl px-6 py-8 flex flex-col gap-4">
@@ -185,7 +182,7 @@ function MapContent() {
         </div>
       )}
 
-      {/* Friend stopped sharing modal — finder only */}
+      {/* Friend stopped sharing modal */}
       {showStoppedModal && (
         <div className="absolute inset-0 z-[100] bg-black/50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl px-6 py-8 flex flex-col gap-4 items-center">
