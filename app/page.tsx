@@ -24,7 +24,13 @@ export default function LandingPage() {
   // If already has a name saved, skip landing
   useEffect(() => {
     const saved = localStorage.getItem("codemap_username")
-    if (saved) router.push("/home")
+    if (saved) {
+      router.push("/home")
+      return
+    }
+    // Pre-warm Firestore connection while user is typing their name
+    const warmUp = doc(db, "users", "warmup")
+    getDoc(warmUp).catch(() => {}) // fire and forget, we dont care about result
   }, [router])
 
   const handleSubmit = async () => {
