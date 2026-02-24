@@ -8,6 +8,7 @@ import {
   getDocs,
   addDoc,
   doc,
+  setDoc,
   Timestamp,
 } from "firebase/firestore"
 import { Users, Radio } from "lucide-react"
@@ -36,13 +37,12 @@ export default function FriendsPage() {
         const friendsRef = collection(db, "users", userId, "friends")
         const snapshot = await getDocs(friendsRef)
 
-        const list: Friend[] = snapshot.docs.map((doc) => ({
-          username: doc.id,
-          displayName: doc.data().displayName,
-          lastConnected: doc.data().lastConnected?.toDate(),
+        const list: Friend[] = snapshot.docs.map((d) => ({
+          username: d.id,
+          displayName: d.data().displayName,
+          lastConnected: d.data().lastConnected?.toDate(),
         }))
 
-        // Sort by most recently connected
         list.sort((a, b) => b.lastConnected?.getTime() - a.lastConnected?.getTime())
         setFriends(list)
       } catch (err) {
@@ -67,10 +67,9 @@ export default function FriendsPage() {
         return
       }
 
-      // Auto generate a code
       const randomCode = Math.random().toString(36).substring(2, 10).toUpperCase()
       const expiresAt = Timestamp.fromDate(
-        new Date(Date.now() + 30 * 60 * 1000) // 30 min default
+        new Date(Date.now() + 30 * 60 * 1000)
       )
 
       // Create session
@@ -78,20 +77,27 @@ export default function FriendsPage() {
         code: randomCode,
         ownerId,
         ownerName,
-        status: "waiting",
+        status: "pending",
         expiresAt,
         createdAt: Timestamp.now(),
         type: "quick",
-        // Pre-fill the friend so they get notified
-        targetFriendId: friend.username,
-        targetFriendName: friend.displayName,
+        finderId: friend.username,
+        finderName: friend.displayName,
+      })
+
+      // Write incoming request directly to friend's user doc
+      await setDoc(doc(db, "users", friend.username, "requests", "incoming"), {
+        sessionId: docRef.id,
+        fromId: ownerId,
+        fromName: ownerName,
+        createdAt: Timestamp.now(),
       })
 
       localStorage.setItem("codemap_session_id", docRef.id)
       localStorage.setItem("codemap_role", "owner")
 
-      // Go to share page to wait for accept
-      router.push(`/share?sessionId=${docRef.id}&friendName=${friend.displayName}`)
+      // Show waiting modal right here
+      router.push(`/waiting?sessionId=${docRef.id}&friendName=${friend.displayName}`)
 
     } catch (err) {
       console.error(err)
@@ -106,7 +112,6 @@ export default function FriendsPage() {
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
     const days = Math.floor(diff / 86400000)
-
     if (minutes < 60) return `${minutes}m ago`
     if (hours < 24) return `${hours}h ago`
     return `${days}d ago`
@@ -115,13 +120,11 @@ export default function FriendsPage() {
   return (
     <div className="flex flex-col px-6 py-8 pb-24 gap-6">
 
-      {/* Title */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Friends</h1>
         <p className="text-gray-400 mt-1">People you've connected with</p>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="flex justify-center py-12">
           <div className="flex gap-1">
@@ -132,7 +135,6 @@ export default function FriendsPage() {
         </div>
       )}
 
-      {/* Empty state */}
       {!loading && friends.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
@@ -144,7 +146,6 @@ export default function FriendsPage() {
         </div>
       )}
 
-      {/* Friends list */}
       {!loading && friends.length > 0 && (
         <div className="flex flex-col gap-3">
           {friends.map((friend) => (
@@ -152,7 +153,6 @@ export default function FriendsPage() {
               key={friend.username}
               className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 shadow-sm"
             >
-              {/* Avatar + name */}
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-[#6366F1]/10 rounded-full flex items-center justify-center">
                   <span className="text-[#6366F1] font-bold text-sm">
@@ -167,7 +167,6 @@ export default function FriendsPage() {
                 </div>
               </div>
 
-              {/* Connect button */}
               <button
                 onClick={() => handleConnect(friend)}
                 disabled={connecting === friend.username}

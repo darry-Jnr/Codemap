@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import BottomNav from "./components/BottomNav";
 import TopNav from "./components/TopNav";
+import IncomingRequest from "./components/IncomingRequest";
 
 
 const inter = Inter({
@@ -26,6 +27,7 @@ export default function RootLayout({
           <TopNav />
           {children}
           <BottomNav />
+          <IncomingRequest />
         </div>
       </body>
     </html>
