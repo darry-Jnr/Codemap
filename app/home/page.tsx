@@ -8,24 +8,33 @@ export default function HomePage() {
   const router = useRouter()
   const [username, setUsername] = useState("")
   const [timeOfDay, setTimeOfDay] = useState("")
-  const [mounted, setMounted] = useState(false)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    // All localStorage + time logic only runs client-side after mount
     const name = localStorage.getItem("codemap_username")
-    if (!name) { router.push("/"); return }
-    setUsername(name)
+    if (!name) { router.replace("/"); return }
 
     const hour = new Date().getHours()
     if (hour < 12) setTimeOfDay("Good morning")
     else if (hour < 17) setTimeOfDay("Good afternoon")
     else setTimeOfDay("Good evening")
 
-    setMounted(true)
+    setUsername(name)
+    setReady(true)
   }, [router])
 
-  // Render nothing until client is ready — prevents hydration mismatch
-  if (!mounted) return null
+  // Show subtle loading while we read localStorage
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="flex gap-1.5">
+          <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce [animation-delay:0ms]" />
+          <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce [animation-delay:150ms]" />
+          <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -47,7 +56,7 @@ export default function HomePage() {
 
       <div className="px-6 flex flex-col gap-4">
 
-        {/* Share — large primary tile */}
+        {/* Share */}
         <button
           onClick={() => router.push("/share")}
           className="relative overflow-hidden rounded-3xl p-6 text-left active:scale-[0.98] transition-transform duration-150"
@@ -66,7 +75,7 @@ export default function HomePage() {
           <p className="text-sm mt-0.5" style={{ color: "rgba(255,255,255,0.6)" }}>Generate a code · up to 2 hours</p>
         </button>
 
-        {/* Find + Group row */}
+        {/* Find + Group */}
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={() => router.push("/find")}

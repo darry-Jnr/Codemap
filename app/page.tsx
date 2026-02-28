@@ -6,7 +6,6 @@ import { db } from "@/lib/firebase"
 import { doc, setDoc } from "firebase/firestore"
 import OnboardingScreen from "./components/OnboardingScreen"
 
-// Helper — set a cookie readable by middleware
 function setCookie(name: string, value: string, days = 365) {
   const expires = new Date(Date.now() + days * 864e5).toUTCString()
   document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`
@@ -18,17 +17,26 @@ export default function LandingPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const [checking, setChecking] = useState(true) // true while we check localStorage
 
   useEffect(() => {
-    // If already logged in redirect to home
+    // Check if already logged in
     const saved = localStorage.getItem("codemap_username")
-    if (saved) { router.push("/home"); return }
+    if (saved) {
+      // Already logged in — make sure cookie is set and redirect
+      const userId = localStorage.getItem("codemap_user_id")
+      if (userId && !document.cookie.includes("codemap_user_id")) {
+        setCookie("codemap_user_id", userId)
+      }
+      router.replace("/home")
+      return
+    }
 
+    // First time — check if onboarding seen
     const seenOnboarding = localStorage.getItem("codemap_onboarded")
     if (!seenOnboarding) setShowOnboarding(true)
 
-    setMounted(true)
+    setChecking(false) // done checking, show the UI
   }, [router])
 
   const handleOnboardingDone = () => {
@@ -53,11 +61,8 @@ export default function LandingPage() {
         createdAt: new Date(),
       })
 
-      // Save to localStorage
       localStorage.setItem("codemap_user_id", userId)
       localStorage.setItem("codemap_username", trimmed)
-
-      // Set cookie so middleware can verify auth on every route
       setCookie("codemap_user_id", userId)
 
       router.push("/home")
@@ -69,7 +74,18 @@ export default function LandingPage() {
     }
   }
 
-  if (!mounted) return null
+  // Show nothing while checking localStorage to avoid flash
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="flex gap-1.5">
+          <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce [animation-delay:0ms]" />
+          <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce [animation-delay:150ms]" />
+          <span className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -124,7 +140,6 @@ export default function LandingPage() {
               background: "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)",
               boxShadow: "0 8px 24px rgba(99,102,241,0.3)",
               fontFamily: "'SF Pro Display', 'Helvetica Neue', system-ui",
-              letterSpacing: "-0.01em",
             }}
           >
             {loading ? (
