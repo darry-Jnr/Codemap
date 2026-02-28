@@ -11,21 +11,25 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    // All localStorage + time logic only runs client-side after mount
     const name = localStorage.getItem("codemap_username")
     if (!name) { router.push("/"); return }
     setUsername(name)
+
     const hour = new Date().getHours()
     if (hour < 12) setTimeOfDay("Good morning")
     else if (hour < 17) setTimeOfDay("Good afternoon")
     else setTimeOfDay("Good evening")
+
     setMounted(true)
   }, [router])
 
+  // Render nothing until client is ready — prevents hydration mismatch
   if (!mounted) return null
 
   return (
     <div
-      className="flex flex-col min-h-screen pb-28"
+      className="flex flex-col min-h-screen pb-32"
       style={{ fontFamily: "'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif" }}
     >
       {/* Header */}
@@ -64,7 +68,6 @@ export default function HomePage() {
 
         {/* Find + Group row */}
         <div className="grid grid-cols-2 gap-4">
-
           <button
             onClick={() => router.push("/find")}
             className="relative overflow-hidden rounded-3xl p-5 text-left active:scale-[0.98] transition-transform duration-150"

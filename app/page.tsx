@@ -3,10 +3,14 @@
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { db } from "@/lib/firebase"
-import { doc, runTransaction } from "firebase/firestore"
+import { doc, setDoc } from "firebase/firestore"
 import OnboardingScreen from "./components/OnboardingScreen"
 
-
+// Helper — set a cookie readable by middleware
+function setCookie(name: string, value: string, days = 365) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString()
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`
+}
 
 export default function LandingPage() {
   const router = useRouter()
@@ -14,22 +18,17 @@ export default function LandingPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [ready, setReady] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    // If already logged in redirect to home
     const saved = localStorage.getItem("codemap_username")
-    if (saved) {
-      router.push("/home")
-      return
-    }
+    if (saved) { router.push("/home"); return }
 
-    // Show onboarding only on first ever visit
     const seenOnboarding = localStorage.getItem("codemap_onboarded")
-    if (!seenOnboarding) {
-      setShowOnboarding(true)
-    }
+    if (!seenOnboarding) setShowOnboarding(true)
 
-    setReady(true)
+    setMounted(true)
   }, [router])
 
   const handleOnboardingDone = () => {
@@ -38,36 +37,29 @@ export default function LandingPage() {
   }
 
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      setError("Please enter a name")
-      return
-    }
+    const trimmed = name.trim()
+    if (!trimmed) { setError("Please enter a name"); return }
+    if (trimmed.length < 2) { setError("Name must be at least 2 characters"); return }
+    if (trimmed.length > 32) { setError("Name is too long"); return }
 
     setLoading(true)
     setError(null)
 
     try {
-      const username = name.trim().toLowerCase()
-      const userRef = doc(db, "users", username)
+      const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
 
-      const taken = await runTransaction(db, async (transaction) => {
-        const existing = await transaction.get(userRef)
-        if (existing.exists()) return true
-        transaction.set(userRef, {
-          username,
-          displayName: name.trim(),
-          createdAt: new Date(),
-        })
-        return false
+      await setDoc(doc(db, "users", userId), {
+        displayName: trimmed,
+        createdAt: new Date(),
       })
 
-      if (taken) {
-        setError("That name is already taken — try another")
-        return
-      }
+      // Save to localStorage
+      localStorage.setItem("codemap_user_id", userId)
+      localStorage.setItem("codemap_username", trimmed)
 
-      localStorage.setItem("codemap_user_id", username)
-      localStorage.setItem("codemap_username", name.trim())
+      // Set cookie so middleware can verify auth on every route
+      setCookie("codemap_user_id", userId)
+
       router.push("/home")
     } catch (err) {
       console.error(err)
@@ -77,16 +69,12 @@ export default function LandingPage() {
     }
   }
 
-  if (!ready) return null
+  if (!mounted) return null
 
   return (
     <>
-      {/* Onboarding overlay — first visit only */}
-      {showOnboarding && (
-        <OnboardingScreen onDone={handleOnboardingDone} />
-      )}
+      {showOnboarding && <OnboardingScreen onDone={handleOnboardingDone} />}
 
-      {/* Name entry screen */}
       <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-white">
 
         {/* Logo */}
@@ -118,23 +106,20 @@ export default function LandingPage() {
             type="text"
             placeholder="What's your name?"
             value={name}
-            onChange={(e) => {
-              setName(e.target.value)
-              setError(null)
-            }}
+            onChange={(e) => { setName(e.target.value); setError(null) }}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            className="w-full border border-gray-200 rounded-2xl px-5 py-4 text-base outline-none focus:border-[#6366F1] transition-colors"
+            maxLength={32}
+            autoFocus
+            className="w-full border border-gray-200 rounded-2xl px-5 py-4 text-base outline-none focus:border-indigo-400 transition-colors"
             style={{ fontFamily: "'SF Pro Text', 'Helvetica Neue', system-ui" }}
           />
 
-          {error && (
-            <span className="text-red-400 text-sm text-center">{error}</span>
-          )}
+          {error && <span className="text-red-400 text-sm text-center">{error}</span>}
 
           <button
             onClick={handleSubmit}
-            disabled={loading}
-            className="w-full rounded-2xl py-4 font-semibold text-white disabled:opacity-70 flex items-center justify-center min-h-[56px] transition-all active:scale-95"
+            disabled={loading || !name.trim()}
+            className="w-full rounded-2xl py-4 font-semibold text-white disabled:opacity-60 flex items-center justify-center min-h-[56px] active:scale-[0.98] transition-all"
             style={{
               background: "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)",
               boxShadow: "0 8px 24px rgba(99,102,241,0.3)",
@@ -148,12 +133,9 @@ export default function LandingPage() {
                 <span className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:150ms]" />
                 <span className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:300ms]" />
               </span>
-            ) : (
-              "Let's go →"
-            )}
+            ) : "Let's go →"}
           </button>
 
-          {/* Re-trigger onboarding */}
           <button
             onClick={() => setShowOnboarding(true)}
             className="text-sm text-gray-300 text-center mt-1 active:text-gray-500 transition-colors"
@@ -161,7 +143,6 @@ export default function LandingPage() {
             How does CodeMap work?
           </button>
         </div>
-
       </div>
     </>
   )
