@@ -4,6 +4,7 @@ import { MapPin, Search } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
+
 export default function HomePage() {
   const router = useRouter()
   const [username, setUsername] = useState("")
@@ -15,6 +16,8 @@ export default function HomePage() {
       return
     }
     setUsername(name)
+
+  
   }, [router])
 
   return (

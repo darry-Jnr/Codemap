@@ -4,7 +4,15 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
 import { db } from "@/lib/firebase"
-import { collection, query, where, getDocs, updateDoc, doc, Timestamp } from "firebase/firestore"
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+  doc,
+  Timestamp,
+} from "firebase/firestore"
 import WaitingModal from "../components/WaitingModal"
 
 export default function FindPage() {
@@ -16,9 +24,23 @@ export default function FindPage() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [ownerName, setOwnerName] = useState<string | null>(null)
 
+  // Only allow alphanumeric, max 8 chars, auto uppercase
+  const handleCodeChange = (val: string) => {
+    const cleaned = val.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 8)
+    setCode(cleaned)
+    setError(null)
+  }
+
+  const validateCode = (): string | null => {
+    if (!code.trim()) return "Please enter a code"
+    if (code.length < 8) return `Code must be 8 characters (you have ${code.length})`
+    return null
+  }
+
   const handleConnect = async () => {
-    if (!code.trim()) {
-      setError("Please enter a code first")
+    const validationError = validateCode()
+    if (validationError) {
+      setError(validationError)
       return
     }
 
@@ -43,7 +65,7 @@ export default function FindPage() {
       const snapshot = await getDocs(q)
 
       if (snapshot.empty) {
-        setError("Code not found or already expired")
+        setError("Code not found — double check it or ask your friend to generate a new one")
         setLoading(false)
         return
       }
@@ -51,14 +73,16 @@ export default function FindPage() {
       const sessionDoc = snapshot.docs[0]
       const sessionData = sessionDoc.data()
 
+      // Check expiry
       if (sessionData.expiresAt.toDate() < new Date()) {
-        setError("This code has expired")
+        setError("This code has expired — ask your friend to generate a new one")
         setLoading(false)
         return
       }
 
+      // Can't connect to own code
       if (sessionData.ownerId === finderId) {
-        setError("You can't connect to your own code 😄")
+        setError("That's your own code! Share it with a friend 😄")
         setLoading(false)
         return
       }
@@ -76,7 +100,6 @@ export default function FindPage() {
       setSessionId(sessionDoc.id)
       setOwnerName(sessionData.ownerName)
       setShowWaiting(true)
-
     } catch (err) {
       console.error(err)
       setError("Something went wrong — try again")
@@ -84,6 +107,8 @@ export default function FindPage() {
       setLoading(false)
     }
   }
+
+  const isReady = code.length === 8 && !loading
 
   return (
     <div className="flex flex-col px-6 py-8 pb-24 gap-8">
@@ -97,36 +122,57 @@ export default function FindPage() {
       {/* Input */}
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-gray-600">
-          Paste your friend's code
+          Friend's code
         </label>
         <input
           type="text"
-          placeholder="E.G., ABC123XYZ"
+          inputMode="text"
+          placeholder="ABC123XY"
           value={code}
-          onChange={(e) => {
-            setCode(e.target.value.toUpperCase())
-            setError(null)
-          }}
-          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-center text-lg font-bold tracking-widest text-[#6366F1] outline-none focus:border-[#6366F1] uppercase"
+          onChange={(e) => handleCodeChange(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+          maxLength={8}
+          className="w-full border border-gray-200 rounded-xl px-4 py-4 text-center text-2xl font-bold tracking-[0.3em] text-[#6366F1] outline-none focus:border-[#6366F1] uppercase transition-colors"
         />
-        {error && (
-          <span className="text-red-400 text-sm text-center">{error}</span>
-        )}
+
+        {/* Character counter */}
+        <div className="flex items-center justify-between px-1">
+          {error ? (
+            <span className="text-red-400 text-sm">{error}</span>
+          ) : (
+            <span className="text-gray-300 text-sm">
+              {code.length > 0 ? `${code.length}/8 characters` : "8 characters"}
+            </span>
+          )}
+          {code.length > 0 && (
+            <button
+              onClick={() => { setCode(""); setError(null) }}
+              className="text-xs text-gray-400 underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Connect Button */}
       <button
         onClick={handleConnect}
-        disabled={loading || code.trim().length < 8}
+        disabled={!isReady}
         className={`w-full rounded-2xl py-4 font-semibold text-base flex items-center justify-center gap-2 transition-all ${
-          code.trim().length >= 8 && !loading
-            ? "bg-[#6366F1] text-white"
+          isReady
+            ? "bg-[#6366F1] text-white active:scale-95"
             : "bg-[#6366F1]/30 text-white cursor-not-allowed"
         }`}
       >
         <Search size={20} />
         {loading ? "Connecting..." : "Connect"}
       </button>
+
+      {/* Hint */}
+      <p className="text-center text-sm text-gray-300">
+        Ask your friend to tap "Share My Location" to get a code
+      </p>
 
       {/* Waiting Modal */}
       {showWaiting && sessionId && ownerName && (
