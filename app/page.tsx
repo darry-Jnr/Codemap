@@ -17,13 +17,11 @@ export default function LandingPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [checking, setChecking] = useState(true) // true while we check localStorage
+  const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    // Check if already logged in
     const saved = localStorage.getItem("codemap_username")
     if (saved) {
-      // Already logged in — make sure cookie is set and redirect
       const userId = localStorage.getItem("codemap_user_id")
       if (userId && !document.cookie.includes("codemap_user_id")) {
         setCookie("codemap_user_id", userId)
@@ -31,12 +29,9 @@ export default function LandingPage() {
       router.replace("/home")
       return
     }
-
-    // First time — check if onboarding seen
     const seenOnboarding = localStorage.getItem("codemap_onboarded")
     if (!seenOnboarding) setShowOnboarding(true)
-
-    setChecking(false) // done checking, show the UI
+    setChecking(false)
   }, [router])
 
   const handleOnboardingDone = () => {
@@ -49,6 +44,7 @@ export default function LandingPage() {
     if (!trimmed) { setError("Please enter a name"); return }
     if (trimmed.length < 2) { setError("Name must be at least 2 characters"); return }
     if (trimmed.length > 32) { setError("Name is too long"); return }
+    if (loading) return
 
     setLoading(true)
     setError(null)
@@ -56,25 +52,30 @@ export default function LandingPage() {
     try {
       const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
 
-      await setDoc(doc(db, "users", userId), {
-        displayName: trimmed,
-        createdAt: new Date(),
-      })
-
+      // ── Save locally and set cookie FIRST, redirect immediately ──
       localStorage.setItem("codemap_user_id", userId)
       localStorage.setItem("codemap_username", trimmed)
       setCookie("codemap_user_id", userId)
 
+      // ── Redirect right away — don't wait for Firestore ──
       router.push("/home")
+
+      // ── Write to Firestore in the background ──
+      setDoc(doc(db, "users", userId), {
+        displayName: trimmed,
+        createdAt: new Date(),
+      }).catch((err) => {
+        // Non-blocking — user is already on home page
+        console.error("Firestore write failed:", err)
+      })
+
     } catch (err) {
       console.error(err)
       setError("Something went wrong — try again")
-    } finally {
       setLoading(false)
     }
   }
 
-  // Show nothing while checking localStorage to avoid flash
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -108,7 +109,10 @@ export default function LandingPage() {
           <div className="text-center">
             <h1
               className="text-2xl font-bold text-gray-900"
-              style={{ fontFamily: "'SF Pro Display', 'Helvetica Neue', system-ui", letterSpacing: "-0.02em" }}
+              style={{
+                fontFamily: "'SF Pro Display', 'Helvetica Neue', system-ui",
+                letterSpacing: "-0.02em",
+              }}
             >
               CodeMap
             </h1>
@@ -116,7 +120,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Name input */}
+        {/* Input */}
         <div className="w-full max-w-sm flex flex-col gap-3">
           <input
             type="text"
@@ -126,20 +130,33 @@ export default function LandingPage() {
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             maxLength={32}
             autoFocus
-            className="w-full border border-gray-200 rounded-2xl px-5 py-4 text-base outline-none focus:border-indigo-400 transition-colors"
-            style={{ fontFamily: "'SF Pro Text', 'Helvetica Neue', system-ui" }}
+            className="w-full border border-gray-200 rounded-2xl px-5 py-4 text-base outline-none transition-colors"
+            style={{
+              fontFamily: "'SF Pro Text', 'Helvetica Neue', system-ui",
+              borderColor: error ? "#FCA5A5" : undefined,
+            }}
+            onFocus={(e) => e.target.style.borderColor = "#6366F1"}
+            onBlur={(e) => e.target.style.borderColor = error ? "#FCA5A5" : "#E5E7EB"}
           />
 
-          {error && <span className="text-red-400 text-sm text-center">{error}</span>}
+          {error && (
+            <div className="flex items-center gap-2 px-1">
+              <span className="text-red-400 text-sm">{error}</span>
+            </div>
+          )}
 
           <button
             onClick={handleSubmit}
             disabled={loading || !name.trim()}
-            className="w-full rounded-2xl py-4 font-semibold text-white disabled:opacity-60 flex items-center justify-center min-h-[56px] active:scale-[0.98] transition-all"
+            className="w-full rounded-2xl py-4 font-semibold text-white flex items-center justify-center min-h-[56px] transition-all duration-150"
             style={{
-              background: "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)",
-              boxShadow: "0 8px 24px rgba(99,102,241,0.3)",
+              background: name.trim()
+                ? "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)"
+                : "#E5E7EB",
+              color: name.trim() ? "white" : "#9CA3AF",
+              boxShadow: name.trim() ? "0 8px 24px rgba(99,102,241,0.3)" : "none",
               fontFamily: "'SF Pro Display', 'Helvetica Neue', system-ui",
+              transform: loading ? "scale(0.98)" : "scale(1)",
             }}
           >
             {loading ? (
@@ -148,12 +165,15 @@ export default function LandingPage() {
                 <span className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:150ms]" />
                 <span className="w-2 h-2 bg-white rounded-full animate-bounce [animation-delay:300ms]" />
               </span>
-            ) : "Let's go →"}
+            ) : (
+              "Let's go →"
+            )}
           </button>
 
           <button
             onClick={() => setShowOnboarding(true)}
-            className="text-sm text-gray-300 text-center mt-1 active:text-gray-500 transition-colors"
+            className="text-sm text-gray-300 text-center mt-1 transition-colors"
+            style={{ fontFamily: "'SF Pro Text', system-ui" }}
           >
             How does CodeMap work?
           </button>
